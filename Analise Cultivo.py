@@ -6,6 +6,22 @@ from configparser import ConfigParser
 from datetime import datetime
 import locale
 
+# Dicionário para mapear os meses de inglês para português
+meses_map = {
+    'january': 'janeiro',
+    'february': 'fevereiro',
+    'march': 'março',
+    'april': 'abril',
+    'may': 'maio',
+    'june': 'junho',
+    'july': 'julho',
+    'august': 'agosto',
+    'september': 'setembro',
+    'october': 'outubro',
+    'november': 'novembro',
+    'december': 'dezembro'
+}
+
 # Função para conectar ao banco de dados Oracle
 def conectar_banco():
     dsn_tns = cx_Oracle.makedsn('oracle.fiap.com.br', '1521', service_name='ORCL')
@@ -33,7 +49,6 @@ def inserir_dados_solo(cursor, conn, dados_solo):
     conn.commit()
     
     print("Dados de solo inseridos com sucesso.")
-
 
 def coletar_dados_solo():
     try:
@@ -82,34 +97,19 @@ def listar_amostras_solo(cursor):
 # Função para analisar uma amostra de solo específica com base no ID_Solo e nas configurações
 from datetime import datetime
 
+# Função para analisar solo por ID
 def analisar_solo_por_id(cursor, id_solo):
-    # Dicionário para mapear os meses de inglês para português
-    meses_map = {
-        'january': 'janeiro',
-        'february': 'fevereiro',
-        'march': 'março',
-        'april': 'abril',
-        'may': 'maio',
-        'june': 'junho',
-        'july': 'julho',
-        'august': 'agosto',
-        'september': 'setembro',
-        'october': 'outubro',
-        'november': 'novembro',
-        'december': 'dezembro'
-    }
-
     # Carregar as configurações
     config = carregar_configuracoes()
 
     if config is None:
-        print("Não foi possível carregar o arquivo de configuração.")
+        print("Erro: Não foi possível carregar o arquivo de configuração.")
         return
 
     # Verificar se a chave 'Mes_Ideal_Plantio' está presente nas configurações
     try:
         meses_ideais_plantio = [mes.strip().lower() for mes in config['Solo']['Mes_Ideal_Plantio'].split(',')]
-        #print(f"Meses Ideais para Plantio: {meses_ideais_plantio}")
+        print(f"Meses Ideais para Plantio: {meses_ideais_plantio}")
     except KeyError:
         print("Erro: 'Mes_Ideal_Plantio' não encontrado no arquivo de configuração.")
         return
@@ -187,34 +187,70 @@ def analisar_solo_por_id(cursor, id_solo):
     else:
         print(f"Nenhuma amostra encontrada com o ID_Solo {id_solo}.")
 
-
-# Função para coletar dados climáticos do OpenWeatherMap
-def coletar_dados_climaticos(cidade, api_key):
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={cidade}&appid={api_key}&units=metric"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return json.loads(response.text)
-    else:
-        print(f"Erro ao coletar dados climáticos. Status code: {response.status_code}")
+# Função para buscar dados climáticos da cidade no OpenWeather
+def buscar_dados_climaticos(cidade):
+    # Carregar a chave da API do arquivo de configuração
+    config = carregar_configuracoes()
+    try:
+        api_key = config['Default']['api_key']  # Carregar a chave da API da seção [Default]
+    except KeyError:
+        print("Erro: 'api_key' não encontrado no arquivo de configuração.")
         return None
 
+    # URL da API com a chave
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={cidade}&appid={api_key}&units=metric&lang=pt_br"
+    
+    try:
+        response = requests.get(url)
+        dados_clima = response.json()
 
-# Função para inserir dados nas tabelas
-def inserir_dados_climaticos(cursor, dados_clima):
-    sql = """
+        if response.status_code == 200:
+            # Extrair dados climáticos
+            temperatura = dados_clima['main']['temp']
+            umidade = dados_clima['main']['humidity']
+            descricao_clima = dados_clima['weather'][0]['description']
+            return (temperatura, umidade, descricao_clima)
+        else:
+            print(f"Erro ao buscar dados climáticos para {cidade}: {dados_clima['message']}")
+            return None
+    except Exception as e:
+        print(f"Erro de conexão com o OpenWeather: {e}")
+        return None
+
+# Função para inserir dados de condições climáticas no banco de dados
+def inserir_condicoes_climaticas(cursor, conn, data_amostra, temperatura, umidade, descricao_clima):
+    # Verificar se já existe um registro com a mesma data
+    cursor.execute("SELECT COUNT(*) FROM Condicoes_Climaticas WHERE Data_Coleta = TO_DATE(:1, 'YYYY-MM-DD')", {'1': data_amostra})
+    resultado = cursor.fetchone()
+
+    if resultado[0] == 0:
+        # Se não existe, insere os dados climáticos
+        insert_sql = """
         INSERT INTO Condicoes_Climaticas (Data_Coleta, Temperatura, Clima, Umidade)
-        VALUES (:1, :2, :3, :4)
-    """
-    data_coleta = datetime.now()
-    temperatura = dados_clima['main']['temp']
-    clima = dados_clima['weather'][0]['description']
-    umidade = dados_clima['main']['humidity']
-    cursor.execute(sql, (data_coleta, temperatura, clima, umidade))
+        VALUES (TO_DATE(:1, 'YYYY-MM-DD'), :2, :3, :4)
+        """
+        cursor.execute(insert_sql, (data_amostra, temperatura, descricao_clima, umidade))
+        conn.commit()
+        print("Dados climáticos inseridos com sucesso.")
+    else:
+        print(f"Dados climáticos para a data {data_amostra} já existem. Nenhuma inserção realizada.")
 
+
+# Função para inserir dados de planta junto com as condições climáticas
 def inserir_dados_planta(cursor, conn):
     try:
         # Solicitar os dados do usuário
         num_amostras = int(input("Digite o número de amostras: "))
+        cidade = input("Digite o nome da cidade: ")
+
+        # Buscar os dados climáticos usando a API do OpenWeather
+        dados_climaticos = buscar_dados_climaticos(cidade)
+        
+        if not dados_climaticos:
+            print(f"Não foi possível obter os dados climáticos para a cidade {cidade}.")
+            return None
+
+        temperatura, umidade, descricao_clima = dados_climaticos
 
         # Data da amostra será a data atual
         data_amostra = datetime.now().strftime('%Y-%m-%d')
@@ -243,7 +279,10 @@ def inserir_dados_planta(cursor, conn):
         # Calcular o Brix Médio
         brix_medio = (brix_alta + brix_meio + brix_baixa) / 3
 
-        # Inserir os dados no banco de dados
+        # Inserir dados climáticos na tabela Condicoes_Climaticas
+        inserir_condicoes_climaticas(cursor, conn, data_amostra, temperatura, umidade, descricao_clima)
+
+        # Inserir os dados da planta no banco de dados
         insert_sql = """
         INSERT INTO Plantas (Numero_Amostras, Data_Amostra, Cor_Plantas, Altura_Plantas, Brix_Alta, Brix_Meio, Brix_Baixa, Brix_Medio)
         VALUES (:1, TO_DATE(:2, 'YYYY-MM-DD'), :3, :4, :5, :6, :7, :8)
@@ -275,12 +314,35 @@ def listar_amostras_plantas(cursor):
     else:
         print("Nenhuma amostra de planta disponível.")
 
+# Função para analisar uma planta por ID
+from datetime import datetime
+
+# Função para analisar uma planta por ID
+# Função para analisar uma planta por ID
 def analisar_planta_por_id(cursor, id_planta):
+    # Carregar as configurações
+    config = carregar_configuracoes()
+
+    if config is None:
+        print("Erro: Não foi possível carregar o arquivo de configuração.")
+        return
+
+    # Carregar os limites de altura e cor ideal do arquivo de configuração
+    try:
+        altura_min = float(config['Planta']['Altura_Minima'])
+        altura_max = float(config['Planta']['Altura_Maxima'])
+        cor_ideal = config['Planta']['Cor_Ideal'].strip().lower()
+        meses_ideais_colheita = [mes.strip().lower() for mes in config['Planta']['Mes_Ideal_Colheita'].split(',')]
+    except KeyError as e:
+        print(f"Erro de configuração: {e} não encontrado no arquivo de configuração.")
+        return
+
     # Executar consulta para buscar a planta com o ID fornecido
     cursor.execute("SELECT * FROM Plantas WHERE ID_Planta = :id", {'id': id_planta})
     planta = cursor.fetchone()
 
     if planta:
+        # Extrair os dados da planta
         _, num_amostras, data_amostra, cor_plantas, altura_plantas, brix_alta, brix_meio, brix_baixa, brix_medio = planta
         
         print(f"\nAnalisando a Planta com ID {id_planta}:")
@@ -288,12 +350,60 @@ def analisar_planta_por_id(cursor, id_planta):
         print(f"Cor da Planta: {cor_plantas}")
         print(f"Altura da Planta: {altura_plantas} metros")
         print(f"Brix - Alta: {brix_alta}, Meio: {brix_meio}, Baixa: {brix_baixa}, Médio: {brix_medio}")
+
+        # Verificar se a altura está dentro dos limites ideais
+        if altura_plantas != 6.0:
+            print(f"A planta não está na altura ideal para colheita (Altura ideal: 6 metros).")
+            return
+
+        # Verificar se a cor é ideal para colheita
+        if cor_plantas != 'roxo esverdeado':
+            print(f"A cor da planta ({cor_plantas}) não é ideal para colheita (Cor ideal: roxo esverdeado).")
+            return
+
+        # Verificar o mês da amostra e se está no mês ideal para colheita
+        mes_amostra_en = datetime.strptime(str(data_amostra), '%Y-%m-%d %H:%M:%S').strftime('%B').lower()
+        mes_amostra = meses_map.get(mes_amostra_en)  # Traduzir para português usando o dicionário
+
+        if mes_amostra not in meses_ideais_colheita:
+            print(f"Mês da amostra ({mes_amostra.capitalize()}) não é um mês ideal para colheita.")
+
+        # Ajuste da consulta SQL para comparar apenas a parte da data, ignorando horas, minutos e segundos
+        cursor.execute("""
+            SELECT Temperatura, Clima, Umidade 
+            FROM Condicoes_Climaticas 
+            WHERE TRUNC(Data_Coleta) = TO_DATE(:1, 'YYYY-MM-DD')
+        """, {'1': data_amostra.strftime('%Y-%m-%d')})
         
-        # Verificar se a planta está pronta para colheita
-        if brix_medio == 18 and cor_plantas == 'roxo esverdeado':
-            print("A planta está pronta para colheita (Brix Médio 18 e cor 'roxo esverdeado').")
+        condicoes_climaticas = cursor.fetchone()
+
+        if condicoes_climaticas:
+            temperatura, clima, umidade = condicoes_climaticas
+            print(f"Temperatura: {temperatura}°C")
+            print(f"Clima: {clima}")
+            print(f"Umidade: {umidade}%")
+
+            # Verificar temperatura ideal (entre 25 e 30 graus)
+            if not (25 <= temperatura <= 30):
+                print(f"A temperatura ({temperatura}°C) não está ideal para colheita (Ideal: 25-30°C).")
+                return
+
+            # Verificar clima ideal (ensolarado)
+            if clima.lower() != 'ensolarado':
+                print(f"O clima ({clima}) não está ideal para colheita (Ideal: Ensolarado).")
+                return
+
+            # Verificar umidade ideal (entre 10-20%)
+            if not (10 <= umidade <= 20):
+                print(f"A umidade ({umidade}%) não está ideal para colheita (Ideal: 10-20%).")
+                return
         else:
-            print("A planta ainda não está pronta para colheita.")
+            print("Dados climáticos não encontrados para essa data.")
+            return
+
+        # Exibir o resultado final se todas as condições forem atendidas
+        if mes_amostra in meses_ideais_colheita:
+            print(f"A planta está pronta para colheita (Brix Médio 18, altura 6m, cor roxo esverdeado, temperatura ideal, clima ensolarado, e umidade ideal).")
     else:
         print(f"Nenhuma planta encontrada com o ID {id_planta}.")
 
