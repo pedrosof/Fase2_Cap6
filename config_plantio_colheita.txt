@@ -1,0 +1,21 @@
+[Solo]
+Umidade_Minima=30.0
+Umidade_Maxima=60.0
+Nutrientes_N_Minimo=0.5
+Nutrientes_N_Maximo=2.0
+Nutrientes_P_Minimo=0.3
+Nutrientes_P_Maximo=1.5
+Nutrientes_K_Minimo=0.3
+Nutrientes_K_Maximo=1.5
+pH_Minimo=5.5
+pH_Maximo=7.0
+Temperatura_Minima=15.0
+Temperatura_Maxima=25.0
+Mes_Ideal_Plantio=setembro,outubro,novembro
+
+[Planta]
+Cor_Ideal=Roxo Esverdeado
+Altura_Minima=6.0
+Altura_Maxima=8.0
+Mes_Ideal_Colheita=dezembro,janeiro,fevereiro
+
