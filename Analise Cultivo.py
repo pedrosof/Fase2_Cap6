@@ -27,7 +27,7 @@ def carregar_configuracoes():
     config = ConfigParser()
     try:
         # Tente ler o arquivo de configuração, ajuste o caminho se necessário
-        config.read('config_plantio_colheita.txt')  # Caminho relativo ou absoluto, conforme necessário
+        config.read('config/config_plantio_colheita.txt')  # Caminho relativo ou absoluto, conforme necessário
         return config
     except Exception as e:
         print(f"Erro ao carregar o arquivo de configuração: {e}")
