@@ -2,6 +2,13 @@
 [Default]
 api_key=ca70a2662f1016192b43c6281510605c
 
+[Database]
+host = oracle.fiap.com.br
+port = 1521
+service_name = ORCL
+user = rm560665
+password = 280678
+
 [Solo]
 Umidade_Minima=30.0
 Umidade_Maxima=60.0

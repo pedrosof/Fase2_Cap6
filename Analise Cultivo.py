@@ -22,12 +22,6 @@ meses_map = {
     'december': 'dezembro'
 }
 
-# Função para conectar ao banco de dados Oracle
-def conectar_banco():
-    dsn_tns = cx_Oracle.makedsn('oracle.fiap.com.br', '1521', service_name='ORCL')
-    conn = cx_Oracle.connect(user='rm560665', password='280678', dsn=dsn_tns)
-    return conn
-
 # Função para carregar as configurações do arquivo
 def carregar_configuracoes():
     config = ConfigParser()
@@ -37,6 +31,35 @@ def carregar_configuracoes():
         return config
     except Exception as e:
         print(f"Erro ao carregar o arquivo de configuração: {e}")
+        return None
+
+# Função para conectar ao banco de dados Oracle
+def conectar_banco():
+    # Carregar configurações do arquivo
+    config = carregar_configuracoes()
+
+    if config is None:
+        print("Erro: Não foi possível carregar as configurações.")
+        return None
+
+    try:
+        # Ler as configurações do arquivo de configuração
+        host = config['Database']['host']
+        port = config['Database']['port']
+        service_name = config['Database']['service_name']
+        user = config['Database']['user']
+        password = config['Database']['password']
+
+        # Criar o Data Source Name (DSN)
+        dsn_tns = cx_Oracle.makedsn(host, port, service_name=service_name)
+
+        # Estabelecer conexão
+        conn = cx_Oracle.connect(user=user, password=password, dsn=dsn_tns)
+        print("Conexão com o banco de dados estabelecida com sucesso!")
+        return conn
+
+    except cx_Oracle.DatabaseError as e:
+        print(f"Erro ao conectar ao banco de dados: {e}")
         return None
 
 def inserir_dados_solo(cursor, conn, dados_solo):
