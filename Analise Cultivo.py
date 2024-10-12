@@ -76,12 +76,30 @@ def inserir_dados_solo(cursor, conn, dados_solo):
 def coletar_dados_solo():
     try:
         num_amostras = int(input("Digite o número de amostras: "))
-        data_amostra = input("Digite a data da amostra (YYYY-MM-DD): ")
+        
+        # A data da amostra será a data de hoje, no formato 'YYYY-MM-DD'
+        data_amostra = datetime.now().strftime('%Y-%m-%d')
+        
         nutriente_n = float(input("Digite o nível de Nitrogênio (N): "))
         nutriente_p = float(input("Digite o nível de Fósforo (P): "))
         nutriente_k = float(input("Digite o nível de Potássio (K): "))
-        umidade = float(input("Digite o nível de umidade do solo: "))
-        ph = float(input("Digite o pH do solo: "))
+        
+        # Validação da Umidade (0 a 100)
+        while True:
+            umidade = float(input("Digite o nível de umidade do solo (0 a 100%): "))
+            if 0 <= umidade <= 100:
+                break
+            else:
+                print("Valor de umidade inválido. A umidade deve estar entre 0 e 100%.")
+        
+        # Validação do pH (1 a 14)
+        while True:
+            ph = float(input("Digite o pH do solo (entre 1 e 14): "))
+            if 1 <= ph <= 14:
+                break
+            else:
+                print("Valor de pH inválido. O pH deve estar entre 1 e 14.")
+        
         temperatura = float(input("Digite a temperatura do solo: "))
 
         # Retornar os dados em um formato esperado para o SQL
@@ -90,8 +108,7 @@ def coletar_dados_solo():
     except ValueError as e:
         print(f"Erro de valor inválido: {e}")
         return None
-
-
+    
 # Função para listar as amostras de solo e analisar um ID específico
 def listar_amostras_solo(cursor):
     # Executar consulta para listar todas as amostras de solo
@@ -118,9 +135,6 @@ def listar_amostras_solo(cursor):
         print("Nenhuma amostra de solo disponível.")
 
 # Função para analisar uma amostra de solo específica com base no ID_Solo e nas configurações
-from datetime import datetime
-
-# Função para analisar solo por ID
 def analisar_solo_por_id(cursor, id_solo):
     # Carregar as configurações
     config = carregar_configuracoes()
@@ -151,13 +165,20 @@ def analisar_solo_por_id(cursor, id_solo):
         print(f"Fósforo (P): {nutriente_p}")
         print(f"Potássio (K): {nutriente_k}")
         print(f"Umidade: {umidade}%")
-        print(f"pH: {ph}")
         print(f"Temperatura: {temp}°C")
 
         # Verificar se o mês da amostra está no mês ideal de plantio
         mes_amostra_en = datetime.strptime(str(data_amostra), '%Y-%m-%d %H:%M:%S').strftime('%B').lower()
         mes_amostra = meses_map.get(mes_amostra_en)  # Traduzir para português usando o dicionário
         print(f"Mês da Amostra: {mes_amostra}")
+
+        # Classificação do pH
+        if ph > 7:
+            print(f"pH: Alcalino em {ph}")
+        elif ph < 7:
+            print(f"pH: Ácido em {ph}")
+        else:
+            print(f"pH: Neutro em {ph}")
 
         correcao = []
 
@@ -199,14 +220,16 @@ def analisar_solo_por_id(cursor, id_solo):
         elif temp > float(config['Solo']['Temperatura_Maxima']):
             correcao.append('Diminuir Temperatura do Solo')
 
-        # Exibir resultado com base no mês
+        # Exibir resultado com base no mês e se há correções
         if not correcao:
             if mes_amostra in meses_ideais_plantio:
                 print(f"O solo com ID {id_solo} está bom para plantio.")
             else:
                 print(f"O solo está regulado, mas o mês não é bom para o cultivo.")
         else:
-            print(f"Sugestão de Correção para o Solo com ID {id_solo}: {', '.join(correcao)}")
+            print(f"Sugestão de Correção para o Solo com ID {id_solo}:")
+            for c in correcao:
+                print(f" - {c}")  # Exibir cada sugestão de correção em uma nova linha
     else:
         print(f"Nenhuma amostra encontrada com o ID_Solo {id_solo}.")
 
@@ -259,7 +282,7 @@ def inserir_condicoes_climaticas(cursor, conn, data_amostra, temperatura, umidad
         print(f"Dados climáticos para a data {data_amostra} já existem. Nenhuma inserção realizada.")
 
 
-# Função para inserir dados de planta junto com as condições climáticas
+# Função para Inserir Dados De Colheita junto com as condições climáticas
 def inserir_dados_planta(cursor, conn):
     try:
         # Solicitar os dados do usuário
@@ -314,6 +337,14 @@ def inserir_dados_planta(cursor, conn):
         conn.commit()
 
         print(f"Dados da planta inseridos com sucesso. Data da amostra: {data_amostra}")
+
+        # Obter o ID da planta recém-inserida
+        cursor.execute("SELECT ID_Planta FROM Plantas WHERE Data_Amostra = TO_DATE(:1, 'YYYY-MM-DD')", {'1': data_amostra})
+        id_planta = cursor.fetchone()[0]
+
+        # Analisar as condições da planta inserida
+        analisar_planta_por_id(cursor, id_planta)  # Chama a função de análise com o ID da planta inserida
+
         return True
 
     except ValueError as e:
@@ -337,10 +368,6 @@ def listar_amostras_plantas(cursor):
     else:
         print("Nenhuma amostra de planta disponível.")
 
-# Função para analisar uma planta por ID
-from datetime import datetime
-
-# Função para analisar uma planta por ID
 # Função para analisar uma planta por ID
 def analisar_planta_por_id(cursor, id_planta):
     # Carregar as configurações
@@ -440,7 +467,7 @@ def menu_principal():
         print("\nMenu:")
         print("1. Inserir dados de Solo para Plantio")
         print("2. Listar Amostras de Solo e Analisar por ID")
-        print("3. Inserir Dados de Planta")
+        print("3. Inserir Dados para Colheita")
         print("4. Listar Amostras de Plantas e Analisar por ID")
         print("5. Sair")
         escolha = input("Escolha uma opção: ")
@@ -449,11 +476,11 @@ def menu_principal():
             # Inserir dados de solo
             dados_solo = coletar_dados_solo()
             if dados_solo:
-                inserir_dados_solo(cursor, dados_solo)
+                inserir_dados_solo(cursor, conn, dados_solo)
         elif escolha == '2':
             listar_amostras_solo(cursor)
         elif escolha == '3':
-            # Inserir dados de planta com verificação
+            # Inserir dados para colheita com verificação
             if inserir_dados_planta(cursor, conn):
                 print("Dados de planta inseridos com sucesso!")
             else:
